@@ -1,15 +1,14 @@
 'use client';
 
 import { useState } from 'react';
-import { Exercise } from '@/types';
 
 interface WorkoutEvent {
   id: string;
   date: string;
-  exercise: Exercise;
+  exerciseId: string;
+  exerciseName: string;
   weight: number;
   reps: number;
-  sets: number;
 }
 
 interface CalendarViewProps {
@@ -18,11 +17,22 @@ interface CalendarViewProps {
   onDateSelect: (date: string) => void;
 }
 
-const exercises: Record<Exercise, { icon: string; color: string }> = {
-  bench: { icon: '🏋️', color: '#d4af37' },
-  squat: { icon: '🦵', color: '#4a90e2' },
-  deadlift: { icon: '⚡', color: '#4a9b4a' },
-  custom: { icon: '➕', color: '#8b8b8b' },
+// Helper function to get exercise color based on name
+const getExerciseColor = (exerciseName: string): string => {
+  const name = exerciseName.toLowerCase();
+  if (name.includes('bench') || name.includes('press')) return '#d4af37';
+  if (name.includes('squat')) return '#4a90e2';
+  if (name.includes('deadlift')) return '#4a9b4a';
+  return '#8b8b8b';
+};
+
+// Helper function to get exercise icon based on name
+const getExerciseIcon = (exerciseName: string): string => {
+  const name = exerciseName.toLowerCase();
+  if (name.includes('bench') || name.includes('press')) return '🏋️';
+  if (name.includes('squat')) return '🦵';
+  if (name.includes('deadlift')) return '⚡';
+  return '💪';
 };
 
 export default function CalendarView({ workouts, selectedDate, onDateSelect }: CalendarViewProps) {
@@ -172,18 +182,20 @@ export default function CalendarView({ workouts, selectedDate, onDateSelect }: C
               </div>
               <div className="space-y-1">
                 {dayWorkouts.slice(0, 3).map((workout) => {
-                  const exerciseInfo = exercises[workout.exercise];
+                  const exerciseColor = getExerciseColor(workout.exerciseName);
+                  const exerciseIcon = getExerciseIcon(workout.exerciseName);
                   return (
                     <div
                       key={workout.id}
                       className="text-xs px-2 py-1 rounded truncate"
                       style={{
-                        backgroundColor: `${exerciseInfo.color}20`,
-                        color: exerciseInfo.color,
-                        borderLeft: `3px solid ${exerciseInfo.color}`,
+                        backgroundColor: `${exerciseColor}20`,
+                        color: exerciseColor,
+                        borderLeft: `3px solid ${exerciseColor}`,
                       }}
+                      title={workout.exerciseName}
                     >
-                      {exerciseInfo.icon} {workout.weight}lbs × {workout.reps}
+                      {exerciseIcon} {workout.weight}lbs × {workout.reps}
                     </div>
                   );
                 })}

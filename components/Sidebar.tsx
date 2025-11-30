@@ -2,7 +2,8 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
+import { useAuth } from '@/lib/useAuth';
 
 interface NavItem {
   label: string;
@@ -11,7 +12,8 @@ interface NavItem {
 }
 
 const navItems: NavItem[] = [
-  { label: 'Charts', href: '/', icon: '📊' },
+  { label: 'Home', href: '/', icon: '🏠' },
+  { label: 'Charts', href: '/charts', icon: '📊' },
   { label: 'Calendar', href: '/calendar', icon: '📅' },
   { label: 'Clans', href: '/clans', icon: '👥' },
   { label: 'Leaderboards', href: '/leaderboards', icon: '🏆' },
@@ -21,6 +23,8 @@ const navItems: NavItem[] = [
 export default function Sidebar() {
   const [isOpen, setIsOpen] = useState(false); // Closed on mobile by default
   const pathname = usePathname();
+  const router = useRouter();
+  const { isLoggedIn, user, logout } = useAuth();
 
   return (
     <>
@@ -84,17 +88,36 @@ export default function Sidebar() {
           </nav>
 
           {/* Footer */}
-          <div className="p-4 border-t border-[#2a2a2a]">
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-[#d4af37] flex items-center justify-center text-[#0f0f0f] font-bold">
-                U
+          {isLoggedIn ? (
+            <div className="p-4 border-t border-[#2a2a2a]">
+              <div className="flex items-center gap-3 mb-3">
+                <div className="w-10 h-10 rounded-full bg-[#d4af37] flex items-center justify-center text-[#0f0f0f] font-bold">
+                  {user?.email?.charAt(0).toUpperCase() || 'U'}
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-white truncate">
+                    {user?.email?.split('@')[0] || 'User'}
+                  </div>
+                  <div className="text-xs text-[#8b8b8b] truncate">{user?.email || ''}</div>
+                </div>
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-white truncate">User Name</div>
-                <div className="text-xs text-[#8b8b8b] truncate">user@example.com</div>
-              </div>
+              <button
+                onClick={logout}
+                className="w-full bg-[#2a2a2a] text-white px-4 py-2 rounded-lg font-medium hover:bg-[#1a1a1a] transition-colors text-sm"
+              >
+                Log Out
+              </button>
             </div>
-          </div>
+          ) : (
+            <div className="p-4 border-t border-[#2a2a2a] text-center">
+              <Link
+                href="/login"
+                className="block bg-[#d4af37] text-[#0f0f0f] px-4 py-2 rounded-lg font-semibold hover:bg-[#b8941f] transition-colors w-full"
+              >
+                Log In
+              </Link>
+            </div>
+          )}
         </div>
       </aside>
 

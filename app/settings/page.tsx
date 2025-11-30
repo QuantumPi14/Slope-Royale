@@ -1,8 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
+import { useAuth } from '@/lib/useAuth';
 
 export default function SettingsPage() {
+  const { isLoggedIn } = useAuth();
   const [name, setName] = useState('User Name');
   const [email, setEmail] = useState('user@example.com');
   const [isPrivate, setIsPrivate] = useState(false);
@@ -11,6 +14,26 @@ export default function SettingsPage() {
     // TODO: Save to Supabase
     console.log(`Saving ${section} settings`);
   };
+
+  if (!isLoggedIn) {
+    return (
+      <div className="min-h-screen bg-[#0f0f0f] text-white">
+        <main className="lg:ml-64 px-4 sm:px-6 lg:px-8 py-16 transition-all duration-300">
+          <div className="max-w-md mx-auto text-center">
+            <h1 className="text-4xl font-bold mb-8 tracking-tight text-white">Settings</h1>
+            <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-12">
+              <Link
+                href="/login"
+                className="inline-block bg-[#d4af37] text-[#0f0f0f] px-8 py-4 rounded-lg font-semibold hover:bg-[#b8941f] transition-colors text-lg"
+              >
+                Sign In
+              </Link>
+            </div>
+          </div>
+        </main>
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#0f0f0f] text-white">

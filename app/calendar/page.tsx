@@ -1,25 +1,30 @@
 'use client';
 
 import { useState } from 'react';
-import { Exercise } from '@/types';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
 import CalendarView from '@/components/CalendarView';
+import ExerciseSearch from '@/components/ExerciseSearch';
+import { useAuth } from '@/lib/useAuth';
 
 interface WorkoutEvent {
   id: string;
   date: string;
-  exercise: Exercise;
+  exerciseId: string;
+  exerciseName: string;
   weight: number;
   reps: number;
-  sets: number;
 }
 
 export default function CalendarPage() {
+  const router = useRouter();
+  const { isLoggedIn } = useAuth();
   const [selectedDate, setSelectedDate] = useState<string | null>(null);
   const [formDate, setFormDate] = useState(new Date().toISOString().split('T')[0]);
-  const [selectedExercise, setSelectedExercise] = useState<Exercise>('bench');
+  const [selectedExerciseId, setSelectedExerciseId] = useState<string | null>(null);
+  const [selectedExerciseName, setSelectedExerciseName] = useState<string>('');
   const [weight, setWeight] = useState('');
   const [reps, setReps] = useState('');
-  const [sets, setSets] = useState('');
 
   // Mock workouts - in real app, fetch from Supabase
   // Generate some workouts for the current month
@@ -41,38 +46,47 @@ export default function CalendarPage() {
     return dates.map((day, index) => ({
       id: `workout-${index + 1}`,
       date: `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
-      exercise: ['bench', 'squat', 'deadlift', 'bench', 'squat'][index] as Exercise,
+      exerciseId: `exercise-${index + 1}`,
+      exerciseName: ['Bench', 'Squat', 'Deadlift', 'Bench', 'Squat'][index],
       weight: [185, 225, 275, 190, 230][index],
       reps: 5,
-      sets: 3,
     }));
   };
 
-  const [workouts, setWorkouts] = useState<WorkoutEvent[]>(getCurrentMonthWorkouts());
+  const [workouts, setWorkouts] = useState<WorkoutEvent[]>(isLoggedIn ? getCurrentMonthWorkouts() : []);
 
-  const exercises: { value: Exercise; label: string; icon: string }[] = [
-    { value: 'bench', label: 'Bench', icon: '🏋️' },
-    { value: 'squat', label: 'Squat', icon: '🦵' },
-    { value: 'deadlift', label: 'Deadlift', icon: '⚡' },
-    { value: 'custom', label: 'Custom', icon: '➕' },
-  ];
+  const handleExerciseSelect = (exerciseId: string, exerciseName: string) => {
+    setSelectedExerciseId(exerciseId);
+    setSelectedExerciseName(exerciseName);
+  };
 
-  const handleSubmit = (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isLoggedIn) {
+      router.push('/login');
+      return;
+    }
+    
+    if (!selectedExerciseId) {
+      alert('Please select an exercise');
+      return;
+    }
+
     // TODO: Submit to Supabase
     const newWorkout: WorkoutEvent = {
       id: Date.now().toString(),
       date: formDate,
-      exercise: selectedExercise,
+      exerciseId: selectedExerciseId,
+      exerciseName: selectedExerciseName,
       weight: parseInt(weight),
       reps: parseInt(reps),
-      sets: parseInt(sets),
     };
     setWorkouts([...workouts, newWorkout]);
     // Reset form
     setWeight('');
     setReps('');
-    setSets('');
+    setSelectedExerciseId(null);
+    setSelectedExerciseName('');
   };
 
   const handleDateSelect = (date: string) => {
@@ -110,26 +124,11 @@ export default function CalendarPage() {
                     <label className="block text-sm font-medium text-[#8b8b8b] mb-2">
                       Exercise
                     </label>
-                    <div className="grid grid-cols-2 gap-2">
-                      {exercises.map((exercise) => (
-                        <button
-                          key={exercise.value}
-                          type="button"
-                          onClick={() => setSelectedExercise(exercise.value)}
-                          className={`
-                            flex items-center justify-center gap-2 px-3 py-2 rounded-lg text-sm font-medium transition-all
-                            ${
-                              selectedExercise === exercise.value
-                                ? 'bg-[#d4af37] text-[#0f0f0f] font-semibold'
-                                : 'bg-[#1a1a1a] text-[#8b8b8b] hover:bg-[#252525] hover:text-[#F5F5F5]'
-                            }
-                          `}
-                        >
-                          <span>{exercise.icon}</span>
-                          <span>{exercise.label}</span>
-                        </button>
-                      ))}
-                    </div>
+                    <ExerciseSearch
+                      selectedExerciseId={selectedExerciseId}
+                      onSelect={handleExerciseSelect}
+                      placeholder="Search exercises..."
+                    />
                   </div>
 
                   <div>
@@ -146,40 +145,32 @@ export default function CalendarPage() {
                     />
                   </div>
 
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <label className="block text-sm font-medium text-[#8b8b8b] mb-2">
-                        Reps
-                      </label>
-                      <input
-                        type="number"
-                        value={reps}
-                        onChange={(e) => setReps(e.target.value)}
-                        placeholder="5"
-                        className="w-full bg-[#2a2a2a] border border-[#2a2a2a] rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#d4af37]"
-                        required
-                      />
-                    </div>
-                    <div>
-                      <label className="block text-sm font-medium text-[#8b8b8b] mb-2">
-                        Sets
-                      </label>
-                      <input
-                        type="number"
-                        value={sets}
-                        onChange={(e) => setSets(e.target.value)}
-                        placeholder="3"
-                        className="w-full bg-[#2a2a2a] border border-[#2a2a2a] rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#d4af37]"
-                        required
-                      />
-                    </div>
+                  <div>
+                    <label className="block text-sm font-medium text-[#8b8b8b] mb-2">
+                      Reps
+                    </label>
+                    <input
+                      type="number"
+                      value={reps}
+                      onChange={(e) => setReps(e.target.value)}
+                      placeholder="5"
+                      className="w-full bg-[#2a2a2a] border border-[#2a2a2a] rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#d4af37]"
+                      required
+                    />
                   </div>
 
                   <button
                     type="submit"
-                    className="w-full bg-[#d4af37] text-[#0f0f0f] font-semibold py-3 rounded-lg font-medium hover:bg-[#DC2626] transition-colors"
+                    disabled={!isLoggedIn}
+                    className={`
+                      w-full py-3 rounded-lg font-semibold transition-colors
+                      ${isLoggedIn 
+                        ? 'bg-[#d4af37] text-[#0f0f0f] hover:bg-[#b8941f]' 
+                        : 'bg-[#2a2a2a] text-[#8b8b8b] cursor-not-allowed opacity-50'
+                      }
+                    `}
                   >
-                    Log Workout
+                    {isLoggedIn ? 'Log Workout' : 'Log In to Log Workout'}
                   </button>
                 </form>
               </div>
@@ -187,11 +178,24 @@ export default function CalendarPage() {
 
             {/* Calendar View */}
             <div className="lg:col-span-2">
-              <CalendarView
-                workouts={workouts}
-                selectedDate={selectedDate}
-                onDateSelect={handleDateSelect}
-              />
+              <div className={!isLoggedIn ? 'opacity-50 pointer-events-none' : ''}>
+                <CalendarView
+                  workouts={workouts}
+                  selectedDate={selectedDate}
+                  onDateSelect={handleDateSelect}
+                />
+              </div>
+              {!isLoggedIn && (
+                <div className="mt-4 bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-4 text-center">
+                  <p className="text-[#8b8b8b] mb-2">You're not logged in. Log in to view and log your workouts.</p>
+                  <Link
+                    href="/login"
+                    className="inline-block bg-[#d4af37] text-[#0f0f0f] px-6 py-2 rounded-lg font-semibold hover:bg-[#b8941f] transition-colors"
+                  >
+                    Log In
+                  </Link>
+                </div>
+              )}
             </div>
           </div>
         </div>

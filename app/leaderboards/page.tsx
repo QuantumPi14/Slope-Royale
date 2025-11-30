@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import { Exercise, TimeRange } from '@/types';
+import { TimeRange } from '@/types';
+import ExerciseSearch from '@/components/ExerciseSearch';
 
 interface LeaderboardUser {
   id: string;
@@ -11,73 +12,22 @@ interface LeaderboardUser {
   logs: number;
   currentWeight: number;
   reps: number;
-  exercise: Exercise;
+  exerciseId: string;
+  exerciseName: string;
 }
 
 export default function LeaderboardsPage() {
-  const [selectedExercise, setSelectedExercise] = useState<Exercise>('bench');
+  const [selectedExerciseId, setSelectedExerciseId] = useState<string | null>(null);
+  const [selectedExerciseName, setSelectedExerciseName] = useState<string>('');
   const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>('3m');
 
-  // Mock leaderboard data - in real app, fetch from Supabase
-  const mockUsers: LeaderboardUser[] = [
-    {
-      id: '1',
-      name: 'John Strong',
-      clan: 'Iron Warriors',
-      slope: 45.2,
-      logs: 42,
-      currentWeight: 315,
-      reps: 5,
-      exercise: 'bench',
-    },
-    {
-      id: '2',
-      name: 'Sarah Power',
-      clan: 'Powerlifters United',
-      slope: 38.7,
-      logs: 38,
-      currentWeight: 285,
-      reps: 5,
-      exercise: 'bench',
-    },
-    {
-      id: '3',
-      name: 'Mike Beast',
-      clan: null,
-      slope: 32.1,
-      logs: 35,
-      currentWeight: 275,
-      reps: 5,
-      exercise: 'bench',
-    },
-    {
-      id: '4',
-      name: 'Alex Gains',
-      clan: 'Iron Warriors',
-      slope: 28.5,
-      logs: 30,
-      currentWeight: 265,
-      reps: 5,
-      exercise: 'bench',
-    },
-    {
-      id: '5',
-      name: 'Emma Lift',
-      clan: 'Beginner Gains',
-      slope: 25.3,
-      logs: 28,
-      currentWeight: 255,
-      reps: 5,
-      exercise: 'bench',
-    },
-  ];
+  // TODO: Fetch leaderboard data from Supabase
+  const mockUsers: LeaderboardUser[] = [];
 
-  const exercises: { value: Exercise; label: string; icon: string }[] = [
-    { value: 'bench', label: 'Bench', icon: '🏋️' },
-    { value: 'squat', label: 'Squat', icon: '🦵' },
-    { value: 'deadlift', label: 'Deadlift', icon: '⚡' },
-    { value: 'custom', label: 'Custom', icon: '➕' },
-  ];
+  const handleExerciseSelect = (exerciseId: string, exerciseName: string) => {
+    setSelectedExerciseId(exerciseId);
+    setSelectedExerciseName(exerciseName);
+  };
 
   const timeRanges: { value: TimeRange; label: string }[] = [
     { value: '4w', label: '4 Weeks' },
@@ -89,7 +39,7 @@ export default function LeaderboardsPage() {
 
   // Filter and sort users
   const filteredUsers = mockUsers
-    .filter(user => user.exercise === selectedExercise)
+    .filter(user => selectedExerciseId ? user.exerciseId === selectedExerciseId : true)
     .sort((a, b) => b.slope - a.slope);
 
   return (
@@ -110,25 +60,11 @@ export default function LeaderboardsPage() {
                 <label className="block text-sm font-medium text-[#8b8b8b] mb-3">
                   Exercise
                 </label>
-                <div className="flex gap-2 flex-wrap">
-                  {exercises.map((exercise) => (
-                    <button
-                      key={exercise.value}
-                      onClick={() => setSelectedExercise(exercise.value)}
-                      className={`
-                        flex items-center gap-2 px-4 py-2 rounded-lg font-medium text-sm transition-all
-                        ${
-                          selectedExercise === exercise.value
-                            ? 'bg-[#d4af37] text-[#0f0f0f] font-semibold text-white'
-                            : 'bg-[#2a2a2a] text-[#8b8b8b] hover:bg-[#252525] hover:text-white'
-                        }
-                      `}
-                    >
-                      <span>{exercise.icon}</span>
-                      <span>{exercise.label}</span>
-                    </button>
-                  ))}
-                </div>
+                <ExerciseSearch
+                  selectedExerciseId={selectedExerciseId}
+                  onSelect={handleExerciseSelect}
+                  placeholder="Search exercises..."
+                />
               </div>
 
               <div>
@@ -216,8 +152,12 @@ export default function LeaderboardsPage() {
           </div>
 
           {filteredUsers.length === 0 && (
-            <div className="text-center py-12 text-[#8b8b8b]">
-              No data available for this filter combination.
+            <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-12 text-center">
+              <div className="text-6xl mb-4">🏆</div>
+              <h3 className="text-xl font-bold text-white mb-2">No Leaderboard Data Yet</h3>
+              <p className="text-[#8b8b8b] mb-4">
+                Be the first to log workouts and appear on the leaderboard!
+              </p>
             </div>
           )}
         </div>

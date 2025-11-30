@@ -1,6 +1,9 @@
 'use client';
 
 import { useState } from 'react';
+import { useRouter } from 'next/navigation';
+import Link from 'next/link';
+import { useAuth } from '@/lib/useAuth';
 
 interface Clan {
   id: string;
@@ -11,37 +14,22 @@ interface Clan {
 }
 
 export default function ClansPage() {
+  const router = useRouter();
+  const { isLoggedIn } = useAuth();
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [clanName, setClanName] = useState('');
   const [clanDescription, setClanDescription] = useState('');
 
-  // Mock clans data - in real app, fetch from Supabase
-  const mockClans: Clan[] = [
-    {
-      id: '1',
-      name: 'Iron Warriors',
-      members: 12,
-      description: 'A competitive group focused on strength gains',
-      isMember: true,
-    },
-    {
-      id: '2',
-      name: 'Powerlifters United',
-      members: 8,
-      description: 'For serious powerlifters only',
-      isMember: false,
-    },
-    {
-      id: '3',
-      name: 'Beginner Gains',
-      members: 25,
-      description: 'Supportive community for beginners',
-      isMember: false,
-    },
-  ];
+  // TODO: Fetch clans data from Supabase
+  const mockClans: Clan[] = [];
 
   const handleCreateClan = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!isLoggedIn) {
+      router.push('/login');
+      setShowCreateModal(false);
+      return;
+    }
     // TODO: Create clan in Supabase
     console.log({ clanName, clanDescription });
     setShowCreateModal(false);
@@ -50,6 +38,10 @@ export default function ClansPage() {
   };
 
   const handleJoinClan = (clanId: string) => {
+    if (!isLoggedIn) {
+      router.push('/login');
+      return;
+    }
     // TODO: Join clan in Supabase
     console.log('Join clan:', clanId);
   };
@@ -62,14 +54,40 @@ export default function ClansPage() {
             <h1 className="text-4xl font-bold text-white">Clans</h1>
             <div className="flex gap-3">
               <button
-                onClick={() => {/* TODO: Open join clan modal */}}
-                className="bg-[#1a1a1a] text-white px-6 py-3 rounded-lg font-medium hover:bg-[#252525] transition-colors border border-[#1a1a1a]"
+                onClick={() => {
+                  if (!isLoggedIn) {
+                    router.push('/login');
+                    return;
+                  }
+                  // TODO: Open join clan modal
+                }}
+                disabled={!isLoggedIn}
+                className={`
+                  px-6 py-3 rounded-lg font-semibold transition-colors border
+                  ${isLoggedIn
+                    ? 'bg-[#2a2a2a] text-white hover:bg-[#1a1a1a] border-[#2a2a2a]'
+                    : 'bg-[#2a2a2a] text-[#8b8b8b] cursor-not-allowed opacity-50 border-[#2a2a2a]'
+                  }
+                `}
               >
                 Join Clan
               </button>
               <button
-                onClick={() => setShowCreateModal(true)}
-                className="bg-[#d4af37] text-[#0f0f0f] font-semibold text-white px-6 py-3 rounded-lg font-medium hover:bg-[#b8941f] transition-colors"
+                onClick={() => {
+                  if (!isLoggedIn) {
+                    router.push('/login');
+                    return;
+                  }
+                  setShowCreateModal(true);
+                }}
+                disabled={!isLoggedIn}
+                className={`
+                  px-6 py-3 rounded-lg font-semibold transition-colors
+                  ${isLoggedIn
+                    ? 'bg-[#d4af37] text-[#0f0f0f] hover:bg-[#b8941f]'
+                    : 'bg-[#2a2a2a] text-[#8b8b8b] cursor-not-allowed opacity-50'
+                  }
+                `}
               >
                 Create Clan
               </button>
@@ -83,37 +101,54 @@ export default function ClansPage() {
           {/* My Clans */}
           <div className="mb-8">
             <h2 className="text-xl font-bold mb-4 text-white">My Clans</h2>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {mockClans
-                .filter(clan => clan.isMember)
-                .map((clan) => (
-                  <div
-                    key={clan.id}
-                    className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-6 hover:border-[#d4af37]/30 transition-colors"
-                  >
-                    <div className="flex items-start justify-between mb-3">
-                      <h3 className="text-lg font-bold text-white">{clan.name}</h3>
-                      <span className="text-xs bg-[#22C55E]/20 text-[#22C55E] px-2 py-1 rounded">
-                        Member
-                      </span>
-                    </div>
-                    <p className="text-sm text-[#8b8b8b] mb-4">{clan.description}</p>
-                    <div className="flex items-center justify-between">
-                      <span className="text-sm text-[#8b8b8b]">
-                        👥 {clan.members} members
-                      </span>
-                      <button className="text-sm text-[#d4af37] hover:text-[#DC2626] font-medium">
-                        View Leaderboard →
-                      </button>
-                    </div>
+            {!isLoggedIn ? (
+              <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-8 text-center opacity-50">
+                <p className="text-[#8b8b8b] mb-4">Log in to view your clans</p>
+                <Link
+                  href="/login"
+                  className="inline-block bg-[#d4af37] text-[#0f0f0f] px-6 py-2 rounded-lg font-semibold hover:bg-[#b8941f] transition-colors"
+                >
+                  Log In
+                </Link>
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {mockClans.filter(clan => clan.isMember).length === 0 ? (
+                  <div className="col-span-full bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-12 text-center">
+                    <div className="text-6xl mb-4">👥</div>
+                    <h3 className="text-xl font-bold text-white mb-2">No Clans Yet</h3>
+                    <p className="text-[#8b8b8b] mb-4">
+                      You're not in any clans yet. Create or join one to get started!
+                    </p>
                   </div>
-                ))}
-              {mockClans.filter(clan => clan.isMember).length === 0 && (
-                <div className="col-span-full text-center py-8 text-[#8b8b8b]">
-                  You're not in any clans yet. Create or join one to get started!
-                </div>
-              )}
-            </div>
+                ) : (
+                  mockClans
+                    .filter(clan => clan.isMember)
+                    .map((clan) => (
+                      <div
+                        key={clan.id}
+                        className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-6 hover:border-[#d4af37]/30 transition-colors"
+                      >
+                        <div className="flex items-start justify-between mb-3">
+                          <h3 className="text-lg font-bold text-white">{clan.name}</h3>
+                          <span className="text-xs bg-[#22C55E]/20 text-[#22C55E] px-2 py-1 rounded">
+                            Member
+                          </span>
+                        </div>
+                        <p className="text-sm text-[#8b8b8b] mb-4">{clan.description}</p>
+                        <div className="flex items-center justify-between">
+                          <span className="text-sm text-[#8b8b8b]">
+                            👥 {clan.members} members
+                          </span>
+                          <button className="text-sm text-[#d4af37] hover:text-[#DC2626] font-medium">
+                            View Leaderboard →
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                )}
+              </div>
+            )}
           </div>
 
         </div>
