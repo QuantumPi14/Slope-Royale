@@ -8,8 +8,19 @@ export function createClient() {
     process.env.NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY;
 
   if (!supabaseUrl || !supabaseAnonKey) {
-    throw new Error(
-      'Missing Supabase environment variables. Please check your .env.local file has NEXT_PUBLIC_SUPABASE_URL and either NEXT_PUBLIC_SUPABASE_ANON_KEY or NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY'
+    // Don't throw - return a client that will fail gracefully on API calls
+    // This prevents the app from crashing on initial load
+    console.error(
+      '⚠️ Missing Supabase environment variables!\n' +
+      'Please add these to your Vercel project settings:\n' +
+      '- NEXT_PUBLIC_SUPABASE_URL\n' +
+      '- NEXT_PUBLIC_SUPABASE_ANON_KEY\n\n' +
+      'Go to: Vercel Dashboard → Your Project → Settings → Environment Variables'
+    );
+    // Return a client with placeholder values - API calls will fail but app won't crash
+    return createBrowserClient(
+      supabaseUrl || 'https://placeholder.supabase.co',
+      supabaseAnonKey || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.placeholder'
     );
   }
 
