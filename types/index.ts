@@ -38,5 +38,6 @@ export interface ChartDataPoint {
   reps: number;
   sets: number;
   isPR: boolean;
+  yValue?: number; // Optional: used when chart should display weight or reps
 }
 

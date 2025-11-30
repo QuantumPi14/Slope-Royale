@@ -15,6 +15,7 @@ interface CalendarViewProps {
   workouts: WorkoutEvent[];
   selectedDate: string | null;
   onDateSelect: (date: string) => void;
+  onWorkoutClick?: (workout: WorkoutEvent) => void;
 }
 
 // Helper function to get exercise color based on name
@@ -26,16 +27,7 @@ const getExerciseColor = (exerciseName: string): string => {
   return '#8b8b8b';
 };
 
-// Helper function to get exercise icon based on name
-const getExerciseIcon = (exerciseName: string): string => {
-  const name = exerciseName.toLowerCase();
-  if (name.includes('bench') || name.includes('press')) return '🏋️';
-  if (name.includes('squat')) return '🦵';
-  if (name.includes('deadlift')) return '⚡';
-  return '💪';
-};
-
-export default function CalendarView({ workouts, selectedDate, onDateSelect }: CalendarViewProps) {
+export default function CalendarView({ workouts, selectedDate, onDateSelect, onWorkoutClick }: CalendarViewProps) {
   const [currentDate, setCurrentDate] = useState(new Date());
   
   const year = currentDate.getFullYear();
@@ -86,7 +78,19 @@ export default function CalendarView({ workouts, selectedDate, onDateSelect }: C
   }
 
   const getWorkoutsForDate = (dateString: string) => {
-    return workouts.filter(w => w.date === dateString);
+    const dayWorkouts = workouts.filter(w => {
+      // Normalize both dates for comparison
+      const workoutDate = w.date ? w.date.split('T')[0] : '';
+      const normalizedDateString = dateString.split('T')[0];
+      return workoutDate === normalizedDateString;
+    });
+    
+    // Debug logging (remove in production)
+    if (dayWorkouts.length > 0) {
+      console.log(`Found ${dayWorkouts.length} workouts for ${dateString}:`, dayWorkouts);
+    }
+    
+    return dayWorkouts;
   };
 
   const goToPreviousMonth = () => {
@@ -168,41 +172,45 @@ export default function CalendarView({ workouts, selectedDate, onDateSelect }: C
               key={index}
               onClick={() => onDateSelect(day.dateString)}
               className={`
-                min-h-[100px] p-2 border border-[#2a2a2a] rounded-lg cursor-pointer transition-all
+                min-h-[100px] max-h-[100px] p-2 border border-[#2a2a2a] rounded-lg cursor-pointer transition-all flex flex-col
                 ${!day.isCurrentMonth ? 'opacity-30' : ''}
                 ${isToday ? 'bg-[#d4af37]/10 border-[#d4af37]/30' : ''}
                 ${isSelected ? 'bg-[#EF4444]/20 border-[#d4af37]' : 'hover:bg-[#1a1a1a]'}
               `}
             >
               <div className={`
-                text-sm font-medium mb-1
+                text-sm font-medium mb-1 flex-shrink-0
                 ${isToday ? 'text-[#d4af37]' : isSelected ? 'text-white' : 'text-[#8b8b8b]'}
               `}>
                 {day.date.getDate()}
               </div>
-              <div className="space-y-1">
-                {dayWorkouts.slice(0, 3).map((workout) => {
-                  const exerciseColor = getExerciseColor(workout.exerciseName);
-                  const exerciseIcon = getExerciseIcon(workout.exerciseName);
-                  return (
-                    <div
-                      key={workout.id}
-                      className="text-xs px-2 py-1 rounded truncate"
-                      style={{
-                        backgroundColor: `${exerciseColor}20`,
-                        color: exerciseColor,
-                        borderLeft: `3px solid ${exerciseColor}`,
-                      }}
-                      title={workout.exerciseName}
-                    >
-                      {exerciseIcon} {workout.weight}lbs × {workout.reps}
-                    </div>
-                  );
-                })}
-                {dayWorkouts.length > 3 && (
-                  <div className="text-xs text-[#8b8b8b] px-2">
-                    +{dayWorkouts.length - 3} more
-                  </div>
+              <div className="space-y-1 overflow-y-auto flex-1 min-h-0 calendar-day-scroll">
+                {dayWorkouts.length === 0 ? (
+                  <div className="text-xs text-[#8b8b8b] px-2">No workouts</div>
+                ) : (
+                  dayWorkouts.map((workout) => {
+                    const exerciseColor = getExerciseColor(workout.exerciseName);
+                    return (
+                      <div
+                        key={workout.id}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (onWorkoutClick) {
+                            onWorkoutClick(workout);
+                          }
+                        }}
+                        className="text-xs px-2 py-1 rounded truncate cursor-pointer hover:opacity-80 transition-opacity flex-shrink-0"
+                        style={{
+                          backgroundColor: `${exerciseColor}20`,
+                          color: exerciseColor,
+                          borderLeft: `3px solid ${exerciseColor}`,
+                        }}
+                        title={`${workout.exerciseName} - Click to delete`}
+                      >
+                        {workout.exerciseName} {workout.weight > 0 ? `${workout.weight}lbs × ` : ''}{workout.reps} reps
+                      </div>
+                    );
+                  })
                 )}
               </div>
             </div>

@@ -7,6 +7,8 @@ interface ProgressChartProps {
   data: ChartDataPoint[];
   onRangeChange: (range: TimeRange) => void;
   currentRange: TimeRange;
+  yAxisLabel?: string;
+  yAxisMetric?: 'weight' | 'reps';
 }
 
 const ranges: { value: TimeRange; label: string }[] = [
@@ -17,7 +19,7 @@ const ranges: { value: TimeRange; label: string }[] = [
   { value: 'all', label: 'All' },
 ];
 
-export default function ProgressChart({ data, onRangeChange, currentRange }: ProgressChartProps) {
+export default function ProgressChart({ data, onRangeChange, currentRange, yAxisLabel = 'Weight (lbs)', yAxisMetric = 'weight' }: ProgressChartProps) {
   const [hoveredIndex, setHoveredIndex] = useState<number | null>(null);
 
   if (data.length === 0) {
@@ -28,26 +30,29 @@ export default function ProgressChart({ data, onRangeChange, currentRange }: Pro
     );
   }
 
+  // Use yValue if available (from charts page), otherwise fall back to weight
+  const getYValue = (d: any) => d.yValue !== undefined ? d.yValue : (yAxisMetric === 'weight' ? d.weight : d.reps);
+
   // Calculate chart dimensions and scaling
-  const maxWeight = Math.max(...data.map(d => d.weight));
-  const minWeight = Math.min(...data.map(d => d.weight));
-  const weightRange = maxWeight - minWeight || 1;
+  const maxValue = Math.max(...data.map(getYValue));
+  const minValue = Math.min(...data.map(getYValue));
+  const valueRange = maxValue - minValue || 1;
   const padding = 50;
   const chartHeight = 300;
 
   // Calculate slope/trend
-  const firstWeight = data[0]?.weight || 0;
-  const lastWeight = data[data.length - 1]?.weight || 0;
-  const slope = lastWeight - firstWeight;
-  const percentChange = firstWeight > 0 ? ((slope / firstWeight) * 100).toFixed(1) : '0';
+  const firstValue = getYValue(data[0]) || 0;
+  const lastValue = getYValue(data[data.length - 1]) || 0;
+  const slope = lastValue - firstValue;
+  const percentChange = firstValue > 0 ? ((slope / firstValue) * 100).toFixed(1) : '0';
 
   // Calculate points for the line
   const getX = (index: number, width: number) => {
     return padding + (index / (data.length - 1 || 1)) * (width - padding * 2);
   };
 
-  const getY = (weight: number, height: number) => {
-    return padding + ((maxWeight - weight) / weightRange) * (height - padding * 2);
+  const getY = (value: number, height: number) => {
+    return padding + ((maxValue - value) / valueRange) * (height - padding * 2);
   };
 
   const hoveredPoint = hoveredIndex !== null ? data[hoveredIndex] : null;
@@ -59,7 +64,9 @@ export default function ProgressChart({ data, onRangeChange, currentRange }: Pro
           <h3 className="text-lg font-bold text-white mb-1 tracking-tight">Strength Progress</h3>
           <div className="flex items-center gap-4 text-sm flex-wrap">
             <span className="text-[#8b8b8b]">
-              Slope: <span className="text-white font-medium">{slope > 0 ? '+' : ''}{slope.toFixed(1)} lbs</span>
+              Slope: <span className="text-white font-medium">
+                {slope > 0 ? '+' : ''}{yAxisMetric === 'weight' ? slope.toFixed(1) + ' lbs' : slope.toFixed(1) + ' reps'}
+              </span>
             </span>
             <span className="text-[#8b8b8b]">
               Change: <span className={`font-medium ${slope >= 0 ? 'text-[#4a90e2]' : 'text-[#d4af37]'}`}>
@@ -111,7 +118,7 @@ export default function ProgressChart({ data, onRangeChange, currentRange }: Pro
             <polygon
               points={`
                 ${padding},${chartHeight - padding}
-                ${data.map((point, index) => `${getX(index, 800)},${getY(point.weight, chartHeight)}`).join(' ')}
+                ${data.map((point, index) => `${getX(index, 800)},${getY(getYValue(point), chartHeight)}`).join(' ')}
                 ${800 - padding},${chartHeight - padding}
               `}
               fill="url(#gradient)"
@@ -129,9 +136,9 @@ export default function ProgressChart({ data, onRangeChange, currentRange }: Pro
           {/* Chart line */}
           {data.length > 1 && (
             <polyline
-              points={data.map((point, index) => `${getX(index, 800)},${getY(point.weight, chartHeight)}`).join(' ')}
+              points={data.map((point, index) => `${getX(index, 800)},${getY(getYValue(point), chartHeight)}`).join(' ')}
               fill="none"
-                stroke="#d4af37"
+              stroke="#d4af37"
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
@@ -141,7 +148,7 @@ export default function ProgressChart({ data, onRangeChange, currentRange }: Pro
           {/* Data points */}
           {data.map((point, index) => {
             const x = getX(index, 800);
-            const y = getY(point.weight, chartHeight);
+            const y = getY(getYValue(point), chartHeight);
             return (
               <g key={index}>
                 <circle
@@ -174,9 +181,9 @@ export default function ProgressChart({ data, onRangeChange, currentRange }: Pro
 
         {/* Y-axis labels */}
         <div className="absolute left-0 top-0 bottom-0 flex flex-col justify-between py-2" style={{ width: padding }}>
-          {[maxWeight, (maxWeight + minWeight) / 2, minWeight].map((weight, i) => (
+          {[maxValue, (maxValue + minValue) / 2, minValue].map((value, i) => (
             <div key={i} className="text-xs text-[#A3A3A3] text-right pr-2">
-              {Math.round(weight)}
+              {yAxisMetric === 'weight' ? Math.round(value) : value.toFixed(1)}
             </div>
           ))}
         </div>
@@ -187,7 +194,7 @@ export default function ProgressChart({ data, onRangeChange, currentRange }: Pro
             className="absolute bg-[#1a1a1a] border border-[#d4af37] rounded-lg p-3 shadow-xl z-10 pointer-events-none"
             style={{
               left: `${(getX(hoveredIndex, 800) / 800) * 100}%`,
-              top: `${getY(hoveredPoint.weight, chartHeight) - 100}px`,
+              top: `${getY(getYValue(hoveredPoint), chartHeight) - 100}px`,
               transform: 'translateX(-50%)',
             }}
           >
@@ -199,11 +206,21 @@ export default function ProgressChart({ data, onRangeChange, currentRange }: Pro
               })}
             </div>
             <div className="text-sm font-bold text-white mb-1">
-              {hoveredPoint.weight} lbs
+              {yAxisMetric === 'weight' 
+                ? `${hoveredPoint.weight} lbs`
+                : `${hoveredPoint.reps} reps`
+              }
             </div>
-            <div className="text-xs text-[#8b8b8b]">
-              {hoveredPoint.sets} sets × {hoveredPoint.reps} reps
-            </div>
+            {yAxisMetric === 'weight' && hoveredPoint.weight && (
+              <div className="text-xs text-[#8b8b8b]">
+                {hoveredPoint.sets} sets × {hoveredPoint.reps} reps
+              </div>
+            )}
+            {yAxisMetric === 'reps' && hoveredPoint.weight && (
+              <div className="text-xs text-[#8b8b8b]">
+                Weight: {hoveredPoint.weight} lbs
+              </div>
+            )}
             {hoveredPoint.isPR && (
               <div className="mt-1 text-xs text-[#d4af37] font-bold">Personal Record</div>
             )}

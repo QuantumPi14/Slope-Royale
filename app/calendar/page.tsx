@@ -1,11 +1,12 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import CalendarView from '@/components/CalendarView';
 import ExerciseSearch from '@/components/ExerciseSearch';
 import { useAuth } from '@/lib/useAuth';
+import { createClient } from '@/lib/supabaseClient';
 
 interface WorkoutEvent {
   id: string;
@@ -25,44 +26,89 @@ export default function CalendarPage() {
   const [selectedExerciseName, setSelectedExerciseName] = useState<string>('');
   const [weight, setWeight] = useState('');
   const [reps, setReps] = useState('');
+  const [isWeighted, setIsWeighted] = useState(false);
 
-  // Mock workouts - in real app, fetch from Supabase
-  // Generate some workouts for the current month
-  const getCurrentMonthWorkouts = (): WorkoutEvent[] => {
-    const today = new Date();
-    const year = today.getFullYear();
-    const month = today.getMonth();
-    const daysInMonth = new Date(year, month + 1, 0).getDate();
-    
-    // Generate workouts for various days this month
-    const dates = [
-      Math.max(1, today.getDate() - 5),
-      Math.max(1, today.getDate() - 3),
-      Math.max(1, today.getDate() - 1),
-      Math.min(daysInMonth, today.getDate() + 2),
-      Math.min(daysInMonth, today.getDate() + 5),
-    ];
-    
-    return dates.map((day, index) => ({
-      id: `workout-${index + 1}`,
-      date: `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`,
-      exerciseId: `exercise-${index + 1}`,
-      exerciseName: ['Bench', 'Squat', 'Deadlift', 'Bench', 'Squat'][index],
-      weight: [185, 225, 275, 190, 230][index],
-      reps: 5,
-    }));
-  };
+  // Bodyweight exercises
+  const bodyweightExercises = ['Push-Ups', 'Pull-Up', 'Chin-Up', 'Dips'];
+  const isBodyweightExercise = bodyweightExercises.includes(selectedExerciseName);
 
-  const [workouts, setWorkouts] = useState<WorkoutEvent[]>(isLoggedIn ? getCurrentMonthWorkouts() : []);
+
+  const [workouts, setWorkouts] = useState<WorkoutEvent[]>([]);
+  const { user } = useAuth();
+  const [workoutToDelete, setWorkoutToDelete] = useState<WorkoutEvent | null>(null);
+  const [isDeleting, setIsDeleting] = useState(false);
+
+  // Fetch workouts from Supabase
+  useEffect(() => {
+    if (!isLoggedIn || !user) {
+      setWorkouts([]);
+      return;
+    }
+
+    const fetchWorkouts = async () => {
+      try {
+        const supabase = createClient();
+        
+        // Fetch ALL logs, not just current month
+        const { data, error } = await supabase
+          .from('logs')
+          .select(`
+            id,
+            date,
+            exercise_id,
+            reps,
+            weight,
+            exercises (
+              id,
+              name
+            )
+          `)
+          .eq('user_id', user.id)
+          .order('date', { ascending: true });
+
+        if (error) {
+          console.error('Error fetching workouts:', error);
+          console.error('Error details:', JSON.stringify(error, null, 2));
+          alert(`Error fetching workouts: ${error.message}. Please check the browser console.`);
+          return;
+        }
+
+        console.log('Fetched workouts from database:', data);
+        console.log('Number of logs fetched:', data?.length || 0);
+
+        const transformedWorkouts: WorkoutEvent[] = (data || []).map((log: any) => {
+          // Ensure date is in YYYY-MM-DD format
+          const logDate = log.date ? (log.date.split('T')[0] || log.date) : '';
+          return {
+            id: log.id,
+            date: logDate,
+            exerciseId: log.exercise_id,
+            exerciseName: log.exercises?.name || '',
+            weight: log.weight || 0,
+            reps: log.reps,
+          };
+        });
+
+        console.log('Transformed workouts:', transformedWorkouts);
+        setWorkouts(transformedWorkouts);
+      } catch (err) {
+        console.error('Error fetching workouts:', err);
+      }
+    };
+
+    fetchWorkouts();
+  }, [isLoggedIn, user]);
 
   const handleExerciseSelect = (exerciseId: string, exerciseName: string) => {
     setSelectedExerciseId(exerciseId);
     setSelectedExerciseName(exerciseName);
+    // Reset weighted toggle when exercise changes
+    setIsWeighted(false);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!isLoggedIn) {
+    if (!isLoggedIn || !user) {
       router.push('/login');
       return;
     }
@@ -72,26 +118,199 @@ export default function CalendarPage() {
       return;
     }
 
-    // TODO: Submit to Supabase
-    const newWorkout: WorkoutEvent = {
-      id: Date.now().toString(),
-      date: formDate,
-      exerciseId: selectedExerciseId,
-      exerciseName: selectedExerciseName,
-      weight: parseInt(weight),
-      reps: parseInt(reps),
-    };
-    setWorkouts([...workouts, newWorkout]);
-    // Reset form
-    setWeight('');
-    setReps('');
-    setSelectedExerciseId(null);
-    setSelectedExerciseName('');
+    if (!reps) {
+      alert('Please enter reps');
+      return;
+    }
+
+    // For bodyweight exercises, weight is optional (null if not weighted)
+    const weightValue = (isBodyweightExercise && !isWeighted) ? null : (weight ? parseInt(weight) : null);
+    
+    if (!isBodyweightExercise && !weightValue) {
+      alert('Please enter weight');
+      return;
+    }
+
+    try {
+      const supabase = createClient();
+      
+      // Insert log into Supabase
+      console.log('Attempting to save workout:', {
+        user_id: user.id,
+        exercise_id: selectedExerciseId,
+        date: formDate,
+        reps: parseInt(reps),
+        weight: weightValue,
+      });
+
+      const { data, error } = await supabase
+        .from('logs')
+        .insert({
+          user_id: user.id,
+          exercise_id: selectedExerciseId,
+          date: formDate,
+          reps: parseInt(reps),
+          weight: weightValue,
+        })
+        .select()
+        .single();
+
+      if (error) {
+        console.error('Error saving workout:', error);
+        console.error('Error details:', JSON.stringify(error, null, 2));
+        alert(`Error saving workout: ${error.message}. Please check the browser console for details.`);
+        return;
+      }
+
+      console.log('Successfully saved workout:', data);
+      alert('Workout logged successfully!');
+
+      // Refresh workouts from database to ensure consistency
+      // This ensures we get all workouts including ones from other months
+      const supabaseRefresh = createClient();
+      const { data: refreshedData, error: refreshError } = await supabaseRefresh
+        .from('logs')
+        .select(`
+          id,
+          date,
+          exercise_id,
+          reps,
+          weight,
+          exercises (
+            id,
+            name
+          )
+        `)
+        .eq('user_id', user.id)
+        .order('date', { ascending: true });
+
+      if (!refreshError && refreshedData) {
+        console.log('Refreshed workouts from database:', refreshedData);
+        const transformedWorkouts: WorkoutEvent[] = refreshedData.map((log: any) => {
+          // Ensure date is in YYYY-MM-DD format
+          const logDate = log.date ? (log.date.split('T')[0] || log.date) : '';
+          return {
+            id: log.id,
+            date: logDate,
+            exerciseId: log.exercise_id,
+            exerciseName: log.exercises?.name || '',
+            weight: log.weight || 0,
+            reps: log.reps,
+          };
+        });
+        console.log('Updated workouts list:', transformedWorkouts);
+        setWorkouts(transformedWorkouts);
+      } else {
+        if (refreshError) {
+          console.error('Error refreshing workouts:', refreshError);
+        }
+        // Fallback: add to local state if refresh fails
+        const newWorkout: WorkoutEvent = {
+          id: data.id,
+          date: formDate,
+          exerciseId: selectedExerciseId,
+          exerciseName: selectedExerciseName,
+          weight: weightValue || 0,
+          reps: parseInt(reps),
+        };
+        setWorkouts([...workouts, newWorkout]);
+      }
+      
+      // Reset form
+      setWeight('');
+      setReps('');
+      setSelectedExerciseId(null);
+      setSelectedExerciseName('');
+      setIsWeighted(false);
+    } catch (err) {
+      console.error('Error saving workout:', err);
+      alert('Error saving workout. Please try again.');
+    }
   };
 
   const handleDateSelect = (date: string) => {
     setSelectedDate(date);
     setFormDate(date);
+  };
+
+  const handleWorkoutClick = (workout: WorkoutEvent) => {
+    setWorkoutToDelete(workout);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!workoutToDelete || !isLoggedIn || !user) return;
+
+    setIsDeleting(true);
+    try {
+      const supabase = createClient();
+      
+      // Delete from Supabase
+      const { error } = await supabase
+        .from('logs')
+        .delete()
+        .eq('id', workoutToDelete.id)
+        .eq('user_id', user.id); // Extra security check
+
+      if (error) {
+        console.error('Error deleting workout:', error);
+        alert('Error deleting workout. Please try again.');
+        setIsDeleting(false);
+        return;
+      }
+
+      // Refresh workouts from database to ensure consistency
+      const supabaseRefresh = createClient();
+      const { data: refreshedData, error: refreshError } = await supabaseRefresh
+        .from('logs')
+        .select(`
+          id,
+          date,
+          exercise_id,
+          reps,
+          weight,
+          exercises (
+            id,
+            name
+          )
+        `)
+        .eq('user_id', user.id)
+        .order('date', { ascending: true });
+
+      if (!refreshError && refreshedData) {
+        console.log('Refreshed workouts after delete:', refreshedData);
+        const transformedWorkouts: WorkoutEvent[] = refreshedData.map((log: any) => {
+          // Ensure date is in YYYY-MM-DD format
+          const logDate = log.date ? (log.date.split('T')[0] || log.date) : '';
+          return {
+            id: log.id,
+            date: logDate,
+            exerciseId: log.exercise_id,
+            exerciseName: log.exercises?.name || '',
+            weight: log.weight || 0,
+            reps: log.reps,
+          };
+        });
+        console.log('Updated workouts list after delete:', transformedWorkouts);
+        setWorkouts(transformedWorkouts);
+      } else {
+        if (refreshError) {
+          console.error('Error refreshing workouts after delete:', refreshError);
+        }
+        // Fallback: remove from local state if refresh fails
+        setWorkouts(workouts.filter(w => w.id !== workoutToDelete.id));
+      }
+      
+      setWorkoutToDelete(null);
+      setIsDeleting(false);
+    } catch (err) {
+      console.error('Error deleting workout:', err);
+      alert('Error deleting workout. Please try again.');
+      setIsDeleting(false);
+    }
+  };
+
+  const handleDeleteCancel = () => {
+    setWorkoutToDelete(null);
   };
 
   return (
@@ -131,19 +350,37 @@ export default function CalendarPage() {
                     />
                   </div>
 
-                  <div>
-                    <label className="block text-sm font-medium text-[#8b8b8b] mb-2">
-                      Weight (lbs)
-                    </label>
-                    <input
-                      type="number"
-                      value={weight}
-                      onChange={(e) => setWeight(e.target.value)}
-                      placeholder="185"
-                      className="w-full bg-[#2a2a2a] border border-[#2a2a2a] rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#d4af37]"
-                      required
-                    />
-                  </div>
+                  {/* Bodyweight toggle for bodyweight exercises */}
+                  {isBodyweightExercise && (
+                    <div>
+                      <label className="flex items-center gap-2 cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={isWeighted}
+                          onChange={(e) => setIsWeighted(e.target.checked)}
+                          className="w-4 h-4 bg-[#2a2a2a] border border-[#2a2a2a] rounded text-[#d4af37] focus:ring-[#d4af37]"
+                        />
+                        <span className="text-sm font-medium text-[#8b8b8b]">Weighted?</span>
+                      </label>
+                    </div>
+                  )}
+
+                  {/* Weight input - only show if not bodyweight or if bodyweight and weighted */}
+                  {(!isBodyweightExercise || isWeighted) && (
+                    <div>
+                      <label className="block text-sm font-medium text-[#8b8b8b] mb-2">
+                        Weight (lbs)
+                      </label>
+                      <input
+                        type="number"
+                        value={weight}
+                        onChange={(e) => setWeight(e.target.value)}
+                        placeholder="185"
+                        className="w-full bg-[#2a2a2a] border border-[#2a2a2a] rounded-lg px-4 py-2 text-white focus:outline-none focus:border-[#d4af37]"
+                        required={!isBodyweightExercise}
+                      />
+                    </div>
+                  )}
 
                   <div>
                     <label className="block text-sm font-medium text-[#8b8b8b] mb-2">
@@ -183,6 +420,7 @@ export default function CalendarPage() {
                   workouts={workouts}
                   selectedDate={selectedDate}
                   onDateSelect={handleDateSelect}
+                  onWorkoutClick={handleWorkoutClick}
                 />
               </div>
               {!isLoggedIn && (
@@ -200,6 +438,49 @@ export default function CalendarPage() {
           </div>
         </div>
       </main>
+
+      {/* Delete Confirmation Modal */}
+      {workoutToDelete && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
+          <div className="bg-[#1a1a1a] border border-[#2a2a2a] rounded-lg p-6 max-w-md w-full mx-4">
+            <h3 className="text-xl font-bold text-white mb-4">Delete Workout?</h3>
+            <div className="mb-6">
+              <p className="text-[#8b8b8b] mb-2">Are you sure you want to delete this workout?</p>
+              <div className="bg-[#2a2a2a] rounded-lg p-4 border border-[#2a2a2a]">
+                <div className="text-white font-medium mb-1">{workoutToDelete.exerciseName}</div>
+                <div className="text-[#8b8b8b] text-sm">
+                  Date: {new Date(workoutToDelete.date).toLocaleDateString('en-US', {
+                    month: 'short',
+                    day: 'numeric',
+                    year: 'numeric'
+                  })}
+                </div>
+                <div className="text-[#8b8b8b] text-sm">
+                  {workoutToDelete.weight > 0 
+                    ? `${workoutToDelete.weight} lbs × ${workoutToDelete.reps} reps`
+                    : `${workoutToDelete.reps} reps`}
+                </div>
+              </div>
+            </div>
+            <div className="flex gap-3">
+              <button
+                onClick={handleDeleteCancel}
+                disabled={isDeleting}
+                className="flex-1 px-4 py-2 bg-[#2a2a2a] text-white rounded-lg hover:bg-[#1a1a1a] transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleDeleteConfirm}
+                disabled={isDeleting}
+                className="flex-1 px-4 py-2 bg-[#EF4444] text-white rounded-lg hover:bg-[#dc2626] transition-colors disabled:opacity-50 disabled:cursor-not-allowed font-semibold"
+              >
+                {isDeleting ? 'Deleting...' : 'Delete'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
