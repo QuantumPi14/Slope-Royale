@@ -15,11 +15,12 @@ SECURITY DEFINER
 SET search_path = ''
 AS $$
 BEGIN
-  INSERT INTO public.profiles (id, first_name, last_name)
+  INSERT INTO public.profiles (id, first_name, last_name, show_on_leaderboard)
   VALUES (
     NEW.id, 
     COALESCE(NEW.raw_user_meta_data->>'first_name', ''),
-    COALESCE(NEW.raw_user_meta_data->>'last_name', '')
+    COALESCE(NEW.raw_user_meta_data->>'last_name', ''),
+    true  -- Default to showing on leaderboard
   )
   ON CONFLICT (id) DO NOTHING;
   RETURN NEW;
@@ -58,6 +59,13 @@ BEGIN
   IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'clan_id') THEN
     ALTER TABLE profiles ADD COLUMN clan_id UUID;
   END IF;
+  
+  -- Add show_on_leaderboard column (default true - users are on leaderboard by default)
+  IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'profiles' AND column_name = 'show_on_leaderboard') THEN
+    ALTER TABLE profiles ADD COLUMN show_on_leaderboard BOOLEAN DEFAULT true;
+    -- Set existing users to true by default
+    UPDATE profiles SET show_on_leaderboard = true WHERE show_on_leaderboard IS NULL;
+  END IF;
 END $$;
 
 -- ============================================
@@ -69,9 +77,15 @@ DROP POLICY IF EXISTS "Users can view own profile" ON profiles;
 DROP POLICY IF EXISTS "Enable insert for authenticated users only" ON profiles;
 DROP POLICY IF EXISTS "Users can update own profile" ON profiles;
 
+-- Allow users to view their own profile
 CREATE POLICY "Users can view own profile"
   ON profiles FOR SELECT
   USING (auth.uid() = id);
+
+-- Allow anyone to view profiles that are on leaderboard (for leaderboard display)
+CREATE POLICY "Anyone can view leaderboard profiles"
+  ON profiles FOR SELECT
+  USING (show_on_leaderboard = true);
 
 CREATE POLICY "Enable insert for authenticated users only"
   ON profiles FOR INSERT

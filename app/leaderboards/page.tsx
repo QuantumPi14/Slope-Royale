@@ -1,8 +1,9 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { TimeRange } from '@/types';
 import ExerciseSearch from '@/components/ExerciseSearch';
+import { createClient } from '@/lib/supabaseClient';
 
 interface LeaderboardUser {
   id: string;
@@ -20,9 +21,174 @@ export default function LeaderboardsPage() {
   const [selectedExerciseId, setSelectedExerciseId] = useState<string | null>(null);
   const [selectedExerciseName, setSelectedExerciseName] = useState<string>('');
   const [selectedTimeRange, setSelectedTimeRange] = useState<TimeRange>('3m');
+  const [users, setUsers] = useState<LeaderboardUser[]>([]);
+  const [loading, setLoading] = useState(true);
 
-  // TODO: Fetch leaderboard data from Supabase
-  const mockUsers: LeaderboardUser[] = [];
+  // Fetch leaderboard data from Supabase
+  useEffect(() => {
+    const fetchLeaderboard = async () => {
+      setLoading(true);
+      try {
+        const supabase = createClient();
+
+        // Calculate date cutoff based on time range
+        const today = new Date();
+        const rangeDays: Record<TimeRange, number> = {
+          '4w': 28,
+          '3m': 90,
+          '6m': 180,
+          '1y': 365,
+          'all': Infinity,
+        };
+
+        const cutoffDate = new Date(today);
+        if (selectedTimeRange !== 'all') {
+          cutoffDate.setDate(cutoffDate.getDate() - rangeDays[selectedTimeRange]);
+        }
+
+        // Fetch all users who are on leaderboard
+        const { data: profiles, error: profilesError } = await supabase
+          .from('profiles')
+          .select(`
+            id,
+            first_name,
+            last_name,
+            clan_id,
+            clans (
+              name
+            )
+          `)
+          .eq('show_on_leaderboard', true);
+
+        if (profilesError) {
+          console.error('Error fetching profiles:', profilesError);
+          setLoading(false);
+          return;
+        }
+
+        if (!profiles || profiles.length === 0) {
+          setUsers([]);
+          setLoading(false);
+          return;
+        }
+
+        // For each user, fetch their logs and calculate stats
+        const leaderboardUsers: LeaderboardUser[] = [];
+
+        for (const profile of profiles) {
+          // Build query for logs
+          let logsQuery = supabase
+            .from('logs')
+            .select(`
+              id,
+              date,
+              exercise_id,
+              reps,
+              weight,
+              exercises (
+                id,
+                name
+              )
+            `)
+            .eq('user_id', profile.id)
+            .order('date', { ascending: true });
+
+          // Filter by exercise if selected
+          if (selectedExerciseId) {
+            logsQuery = logsQuery.eq('exercise_id', selectedExerciseId);
+          }
+
+          // Filter by date range
+          if (selectedTimeRange !== 'all') {
+            logsQuery = logsQuery.gte('date', cutoffDate.toISOString().split('T')[0]);
+          }
+
+          const { data: logs, error: logsError } = await logsQuery;
+
+          if (logsError) {
+            console.error(`Error fetching logs for user ${profile.id}:`, logsError);
+            continue;
+          }
+
+          if (!logs || logs.length === 0) {
+            continue; // Skip users with no logs
+          }
+
+          // Group logs by exercise
+          const exerciseGroups = new Map<string, typeof logs>();
+          logs.forEach((log: any) => {
+            const exerciseId = log.exercise_id;
+            if (!exerciseGroups.has(exerciseId)) {
+              exerciseGroups.set(exerciseId, []);
+            }
+            exerciseGroups.get(exerciseId)!.push(log);
+          });
+
+          // Calculate stats for each exercise
+          for (const [exerciseId, exerciseLogs] of exerciseGroups) {
+            if (exerciseLogs.length < 2) continue; // Need at least 2 logs to calculate slope
+
+            // Sort by date
+            exerciseLogs.sort((a: any, b: any) => 
+              new Date(a.date).getTime() - new Date(b.date).getTime()
+            );
+
+            // Determine metric (weight or reps)
+            const hasWeight = exerciseLogs.some((log: any) => log.weight !== null);
+            const getValue = (log: any) => hasWeight ? (log.weight ?? 0) : log.reps;
+
+            // Calculate slope (last value - first value)
+            const firstValue = getValue(exerciseLogs[0]);
+            const lastValue = getValue(exerciseLogs[exerciseLogs.length - 1]);
+            const slope = lastValue - firstValue;
+
+            // Get current lift (most recent log)
+            const latestLog = exerciseLogs[exerciseLogs.length - 1];
+            const currentWeight = latestLog.weight ?? 0;
+            const reps = latestLog.reps;
+            const exercises = latestLog.exercises as any;
+            const exerciseName = Array.isArray(exercises)
+              ? (exercises.length > 0 ? exercises[0].name : 'Unknown')
+              : (exercises?.name || 'Unknown');
+
+            // Get clan name
+            const clans = profile.clans as any;
+            const clanName = Array.isArray(clans) 
+              ? (clans.length > 0 ? clans[0].name : null)
+              : (clans?.name || null);
+
+            // Build user name
+            const firstName = profile.first_name || '';
+            const lastName = profile.last_name || '';
+            const name = `${firstName} ${lastName}`.trim() || 'Anonymous User';
+
+            leaderboardUsers.push({
+              id: profile.id,
+              name,
+              clan: clanName,
+              slope,
+              logs: exerciseLogs.length,
+              currentWeight,
+              reps,
+              exerciseId,
+              exerciseName,
+            });
+          }
+        }
+
+        // Sort by slope (descending)
+        leaderboardUsers.sort((a, b) => b.slope - a.slope);
+
+        setUsers(leaderboardUsers);
+        setLoading(false);
+      } catch (err) {
+        console.error('Error fetching leaderboard:', err);
+        setLoading(false);
+      }
+    };
+
+    fetchLeaderboard();
+  }, [selectedExerciseId, selectedTimeRange]);
 
   const handleExerciseSelect = (exerciseId: string, exerciseName: string) => {
     setSelectedExerciseId(exerciseId);
@@ -37,10 +203,8 @@ export default function LeaderboardsPage() {
     { value: 'all', label: 'All Time' },
   ];
 
-  // Filter and sort users
-  const filteredUsers = mockUsers
-    .filter(user => selectedExerciseId ? user.exerciseId === selectedExerciseId : true)
-    .sort((a, b) => b.slope - a.slope);
+  // Users are already filtered and sorted from the fetch
+  const filteredUsers = users;
 
   return (
     <div className="min-h-screen bg-[#0f0f0f] text-white">
@@ -95,6 +259,11 @@ export default function LeaderboardsPage() {
 
           {/* Leaderboard */}
           <div className="bg-[#2a2a2a] border border-[#2a2a2a] rounded-lg overflow-hidden">
+            {loading ? (
+              <div className="p-12 text-center">
+                <div className="text-[#8b8b8b]">Loading leaderboard...</div>
+              </div>
+            ) : (
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-[#2a2a2a]">
@@ -149,6 +318,7 @@ export default function LeaderboardsPage() {
                 </tbody>
               </table>
             </div>
+            )}
           </div>
 
           {filteredUsers.length === 0 && (
